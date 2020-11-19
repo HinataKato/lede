@@ -1,15 +1,20 @@
+#
+# This is free software, lisence use MIT.
+# 
+# Copyright (C) 2019 P3TERX <https://p3terx.com>
+# Copyright (C) 2020 KFERMercer <KFER.Mercer@gmail.com>
 # 
 # <https://github.com/KFERMercer/OpenWrt-CI>
 #
-# Copyright (C) 2019 P3TERX
-#
-# Copyright (C) 2020 KFERMercer
-#
+
 name: OpenWrt-CI
 
 on:
+  push:
+    branches: 
+      - master
   schedule:
-    - cron: 0 20 * * *
+     - cron: 00 0 1/7 * ?
   release:
     types: [published]
 
@@ -42,21 +47,180 @@ jobs:
           sudo -E apt-get -y autoremove --purge
           sudo -E apt-get clean
 
+          # sudo mkdir -p -m 777 /mnt/openwrt/bin /mnt/openwrt/build_dir/host /mnt/openwrt/build_dir/hostpkg /mnt/openwrt/dl /mnt/openwrt/feeds /mnt/openwrt/staging_dir
+          # ln -s /mnt/openwrt/bin ./bin
+          # mkdir -p ./build_dir
+          # ln -s -f /mnt/openwrt/build_dir/host ./build_dir/host
+          # ln -s -f /mnt/openwrt/build_dir/hostpkg ./build_dir/hostpkg
+          # ln -s /mnt/openwrt/dl ./dl
+          # ln -s /mnt/openwrt/feeds ./feeds
+          # ln -s /mnt/openwrt/staging_dir ./staging_dir
+
           df -h
 
       - name: Update feeds
         run: |
-          sed -i 's/#src-git helloworld/src-git helloworld/g' ./feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          
+      - name: 编译po2lmo
+        run: |
+          mkdir package/luci-app-openclash
+          cd package/luci-app-openclash
+          git init
+          git remote add -f origin https://github.com/vernesong/OpenClash.git
+          git config core.sparsecheckout true
+          echo "luci-app-openclash" >> .git/info/sparse-checkout
+          git pull origin master
+          git branch --set-upstream-to=origin/master master
+          pushd luci-app-openclash/tools/po2lmo
+          make && sudo make install
+          popd
 
+        
       - name: Generate configuration file
-        run: make defconfig
+        run: |
+          rm -f ./.config*
+          touch ./.config
+
+          #
+          # 在 cat >> .config <<EOF 到 EOF 之间粘贴你的编译配置, 需注意缩进关系
+          # 例如:
+
+          cat >> .config <<EOF
+          CONFIG_TARGET_IMAGES_GZIP=y
+          CONFIG_KERNEL_BUILD_USER="OpenWrt-CI"
+          CONFIG_KERNEL_BUILD_DOMAIN="Azure"
+          EOF
+
+          #
+          # ===============================================================
+          # 
+          cat >> .config <<EOF
+          CONFIG_TARGET_x86=y
+          CONFIG_TARGET_x86_64=y
+          CONFIG_TARGET_x86_64_Generic=y
+          EOF
+
+          # 固件压缩:
+          # cat >> .config <<EOF
+          # CONFIG_TARGET_IMAGES_GZIP=y
+          # EOF
+
+          # 编译UEFI固件:
+          # cat >> .config <<EOF
+          # CONFIG_EFI_IMAGES=y
+          # EOF
+
+          # IPv6支持:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_dnsmasq_full_dhcpv6=y
+          CONFIG_PACKAGE_ipv6helper=y
+          EOF
+
+          # 多文件系统支持:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_kmod-fs-nfs=y
+          CONFIG_PACKAGE_kmod-fs-nfs-common=y
+          CONFIG_PACKAGE_kmod-fs-nfs-v3=y
+          CONFIG_PACKAGE_kmod-fs-nfs-v4=y
+          CONFIG_PACKAGE_kmod-fs-ntfs=y
+          CONFIG_PACKAGE_kmod-fs-squashfs=y
+          EOF
+
+          # USB3.0支持:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_kmod-usb-ohci=y
+          CONFIG_PACKAGE_kmod-usb-ohci-pci=y
+          CONFIG_PACKAGE_kmod-usb2=y
+          CONFIG_PACKAGE_kmod-usb2-pci=y
+          CONFIG_PACKAGE_kmod-usb3=y
+          EOF
+
+          # 设置固件大小:
+          cat >> .config <<EOF
+          CONFIG_TARGET_KERNEL_PARTSIZE=30
+          CONFIG_TARGET_ROOTFS_PARTSIZE=994
+          EOF
+
+          # 常用LuCI插件选择:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_luci-app-adbyby-plus=n
+          CONFIG_PACKAGE_luci-app-aria2=n
+          CONFIG_PACKAGE_luci-app-baidupcs-web=n
+          CONFIG_PACKAGE_luci-app-docker=n
+          CONFIG_PACKAGE_luci-app-frpc=n
+          CONFIG_PACKAGE_luci-app-kodexplorer=n
+          CONFIG_PACKAGE_luci-app-minidlna=n
+          CONFIG_PACKAGE_luci-app-openvpn=n
+          CONFIG_PACKAGE_luci-app-openvpn-server=n
+          CONFIG_PACKAGE_luci-app-qbittorrent=n
+          CONFIG_PACKAGE_luci-app-ssr-plus=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Kcptun=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_Shadowsocks=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Server=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_ShadowsocksR_Socks=n
+          CONFIG_PACKAGE_luci-app-ssr-plus_INCLUDE_V2ray=n
+          CONFIG_PACKAGE_luci-app-ttyd=y
+          CONFIG_PACKAGE_luci-app-v2ray-server=n
+          CONFIG_PACKAGE_luci-app-verysync=n
+          CONFIG_PACKAGE_luci-app-webadmin=n
+          CONFIG_PACKAGE_luci-app-wireguard=n
+          CONFIG_PACKAGE_luci-app-wrtbwmon=n
+          CONFIG_PACKAGE_luci-app-ddns=n
+          CONFIG_PACKAGE_ddns-scripts=n
+          CONFIG_PACKAGE_ddns-scripts_aliyun=n
+          CONFIG_PACKAGE_luci-app-vsftpd=y
+          CONFIG_PACKAGE_luci-app-unblockmusic=y
+          CONFIG_PACKAGE_luci-app-pptp-server=n
+          CONFIG_PACKAGE_luci-app-ipsec-vpnd=n
+          CONFIG_PACKAGE_luci-app-zerotier=n
+          CONFIG_PACKAGE_luci-app-wol=n
+          CONFIG_PACKAGE_luci-app-accesscontrol=n
+          CONFIG_PACKAGE_luci-app-vlmcsd=y
+          CONFIG_PACKAGE_luci-app-xlnetacc=n
+          CONFIG_PACKAGE_libustream-openssl=y
+          CONFIG_PACKAGE_luci-app-smartdns=n
+          CONFIG_PACKAGE_luci-app-sqm=n
+          CONFIG_PACKAGE_sqm-scripts=n
+          CONFIG_PACKAGE_nlbwmon=n
+          CONFIG_PACKAGE_luci-app-nlbwmon=n
+          CONFIG_PACKAGE_trojan=n
+          CONFIG_PACKAGE_luci-app-openclash=y
+          CONFIG_PACKAGE_kmod-tun=y
+          EOF
+
+          # LuCI主题:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_luci-theme-argon=y
+          CONFIG_PACKAGE_luci-theme-atmaterial=y
+          EOF
+
+          # 常用软件包:
+          cat >> .config <<EOF
+          CONFIG_PACKAGE_curl=y
+          # CONFIG_PACKAGE_htop=y
+          CONFIG_PACKAGE_nano=y
+          CONFIG_PACKAGE_screen=y
+          # CONFIG_PACKAGE_tree=y
+          # CONFIG_PACKAGE_vim-fuller=y
+          CONFIG_PACKAGE_wget=y
+          EOF
+
+          # 取消编译VMware镜像以及镜像填充 (不要删除被缩进的注释符号):
+          cat >> .config <<EOF
+          # CONFIG_TARGET_IMAGES_PAD is not set
+          # CONFIG_VMDK_IMAGES is not set
+          EOF
+
+          sed -i 's/^[ \t]*//g' ./.config
+          make defconfig
 
       - name: Make download
         run: |
-          make download -j8
-          find dl -size -1024c -exec rm -f {} \;
+          make download -j8 || make download -j1 V=s
+          rm -rf $(find ./dl/ -size -1024c)
+          df -h
 
       - name: Compile firmware
         run: |
@@ -66,9 +230,8 @@ jobs:
           echo "======================="
           df -h
           echo "======================="
-          du -h --max-depth=1 ./ --exclude=build_dir --exclude=bin
-          du -h --max-depth=1 ./build_dir
-          du -h --max-depth=1 ./bin
+          du -h ./ --max-depth=1
+          du -h /mnt/openwrt/ --max-depth=1 || true
 
       - name: Prepare artifact
         run: |
@@ -97,7 +260,6 @@ jobs:
         with:
           name: OpenWrt_firmware
           path: ./bin/targets/
-  
 
       - name: Upload release asset
         if: github.event == 'release'
